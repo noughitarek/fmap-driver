@@ -137,8 +137,8 @@ class Facebook:
             # Navigate to the Facebook mobile site
             self.driver.webDriver.get("https://mbasic.facebook.com/profile.php")
             try:
-                # Locate the element once and store it
-                strong_element = self.driver.find_element(By.XPATH, '//span/strong')
+                # Locate the elemesnt once and store it
+                strong_element = self.driver.webDriver.find_element(By.XPATH, '//span/strong')
                 
                 if strong_element:
                     # Access the innerHTML attribute
