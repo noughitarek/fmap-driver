@@ -35,7 +35,7 @@ class VideoFrameExtractor:
         self.driver.record_log('info', f"Starting the download from: {video_url}")
         
         try:
-            response = requests.get(download_path)
+            response = requests.get(video_url)
             response.raise_for_status()
             with open(download_path, 'wb') as file:
                 file.write(response.content)
@@ -53,7 +53,6 @@ class VideoFrameExtractor:
         """
         image_hashes = {}
         path = os.path.abspath(frames_dir)
-        
         for filename in os.listdir(path):
             file_path = os.path.join(path, filename)
             if os.path.isfile(file_path):
@@ -63,7 +62,6 @@ class VideoFrameExtractor:
                     similarity_distance = img_hash - existing_hash
                     if similarity_distance <= 5:
                         os.remove(file_path)
-                        self.driver.record_log('info', f"Removed similar frame: {file_path}")
                         break
                 else:
                     image_hashes[img_hash] = filename
@@ -83,7 +81,7 @@ class VideoFrameExtractor:
                 with open(file_path, 'rb') as photo:
                     photos = {'photo': (filename, photo)}
                     try:
-                        self.driver.send_http_request('POST', f"photos/{photos_group_id}/add", photos)
+                        self.driver.send_http_request('POST', f"photos/{photos_group_id}/add", photos, files=True)
                         self.driver.record_log('info', f'Successfully uploaded {filename}')
                     except:
                         self.driver.record_log('error', f'Failed to upload {filename}.')

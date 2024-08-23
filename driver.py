@@ -203,7 +203,7 @@ class Driver:
         # Example usage in a logging function
         #self.send_http_request('POST', 'logs/add', log_entry)
 
-    def send_http_request(self, request_type: str, path: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def send_http_request(self, request_type: str, path: str, data: Optional[Dict[str, Any]] = None, files:bool=False) -> Dict[str, Any]:
         """
         Sends an HTTP request to the specified URL and handles the response.
 
@@ -225,7 +225,10 @@ class Driver:
 
             # Determine request type and send appropriate request
             if request_type_lower == 'post':
-                response = requests.post(url, json=data)
+                if files:
+                    response = requests.post(url, files=data)
+                else:
+                    response = requests.post(url, json=data)
             elif request_type_lower == 'get':
                 response = requests.get(url)
             else:
