@@ -3,6 +3,7 @@ import time
 import uuid
 import random
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
 
 class Facebook:
     def __init__(self, driver) -> None:
@@ -71,6 +72,7 @@ class Facebook:
                             self.driver.stop_driver()
                         
                         # Initialize a new driver instance for the current account
+                        self.driver.currentAccount = listing['account']
                         self.driver.start_driver()
                         self.login()
                     
@@ -131,17 +133,29 @@ class Facebook:
             Exception: If any part of the login process fails.
         """
         try:
-            # Log the start of the login attempt
-            self.driver.record_log('info', "Attempting to log in.")
 
             # Navigate to the Facebook mobile site
+            self.driver.webDriver.get("https://mbasic.facebook.com/profile.php")
+            try:
+                # Locate the element once and store it
+                strong_element = self.driver.find_element(By.XPATH, '//span/strong')
+                
+                if strong_element:
+                    # Access the innerHTML attribute
+                    strong_text = strong_element.get_attribute('innerHTML')
+                    self.driver.record_log('info', f"Connected as {strong_text}")
+                    return
+            except NoSuchElementException:
+                # Handle the case where the element is not found
+                self.driver.record_log('info', "Not logged in, attempting login.")
+                
+                
             self.driver.webDriver.get("https://mbasic.facebook.com/")
-
             # Enter the username
             if not self.driver.type("email", self.driver.currentAccount['username'], by=By.NAME):
                 self.driver.record_log('error', "Failed to type username.")
                 raise Exception("Username entry failed")
-
+            
             # Enter the password
             if not self.driver.type("pass", self.driver.currentAccount['password'], by=By.NAME):
                 self.driver.record_log('error', "Failed to type password.")
@@ -151,7 +165,9 @@ class Facebook:
             if not self.driver.click("login", by=By.NAME):
                 self.driver.record_log('error', "Failed to click login button.")
                 raise Exception("Login button click failed")
-
+            
+            if not self.driver.click("//input[@value='OK']"):
+                self.driver.record_log('error', "Failed to click 'OK' button.")
             # Wait for the login attempt to complete
             time.sleep(5)
             
