@@ -8,8 +8,84 @@ from selenium.common.exceptions import NoSuchElementException
 class Facebook:
     def __init__(self, driver) -> None:
         self.driver = driver
-        self.handle_listings_to_create()
+        #self.handle_listings_to_remove()
+        #self.handle_listings_to_create()
+        self.update_results()
     
+    def update_results(self):
+        accounts = self.driver.send_http_request('GET', 'accounts/toupdate')
+        if accounts:
+            for account in accounts:
+                try:
+                    if self.driver.currentAccount != account:
+                        if self.driver:
+                            self.driver.stop_driver()
+                        
+                        # Initialize a new driver instance for the current account
+                        self.driver.currentAccount = account
+                        self.driver.start_driver()
+                        self.login()
+
+                    self.update_account_results()
+                    time.sleep(random.uniform(3.0, 5.0))
+                except Exception as e:
+                    # Log errors related to account processing
+                    self.driver.record_log('error', f"Failed to process account {account.get('id', 'unknown')}: {e}")
+    
+    def update_account_results(self):
+        self.driver.webDriver.get("https://www.facebook.com/marketplace/you/selling")
+        
+        init_xpath = "//div[contains(@style, 'border-radius: max(0px, min(var(--card-corner-radius), calc((100vw - 4px - 100%) * 9999))) / var(--card-corner-radius);')]/../.."
+
+        loading_xpath = "//div[@aria-label='Loading...' and @role='status' and @data-visualcompletion='loading-state']"
+        
+        elements = self.driver.webDriver.find_elements(By.XPATH, init_xpath)
+        is_loading = True
+
+        while is_loading:
+            self.driver.webDriver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(random.uniform(1, 2))
+            
+            elements = self.driver.webDriver.find_elements(By.XPATH, init_xpath)
+            time.sleep(random.uniform(1, 2))
+
+            try:
+                element = self.driver.webDriver.find_element(By.XPATH, loading_xpath)
+                is_loading = True
+            except NoSuchElementException:
+                is_loading = False
+            
+            time.sleep(random.uniform(1, 2))
+            if len(elements) >= self.driver.currentAccount['total_listings']:
+                break
+        
+        for element in elements:
+            title_xpath = "(((//div[@aria-label='Your Listing']//a/div)[1]/div)[2]/div/div/span)[1]"
+            clicks_xpath = '//div[@aria-label="The number of times people viewed the details page of your Marketplace listing in the last 14 days."]/..'
+            location_xpath = "//div[@aria-label='Your Listing']//a//span/span/span/span[@aria-hidden='true']/../.."
+            
+            clicks = element.find_element(By.XPATH, clicks_xpath).text
+            
+            element.click()
+            time.sleep(2)
+
+            title = element.find_element(By.XPATH, title_xpath).text
+            location = element.find_element(By.XPATH, location_xpath).text
+
+            data = {
+                "title": title,
+                "clicks": clicks,
+                "location": location,
+            }
+        
+            try:
+                self.driver.send_http_request('POST', f"accounts/{self.driver.currentAccount['id']}/update", data)
+                self.driver.record_log('info', f"Data updated")
+            except Exception as e:
+                self.driver.record_log('error', f"Error updating the data: {e}")
+
+            self.driver.click("//div[@aria-label='Close']")
+
     def handle_listings_to_create(self):
         """
         Handles the process of creating listings on the marketplace.
@@ -23,6 +99,7 @@ class Facebook:
         if listings:
             for listing in listings['listings']:
                 try:
+                    self.currentPostingId = listing['posting_id']
                     # Check if the current account needs to be updated
                     if self.driver.currentAccount != listing['account']:
                         if self.driver:
@@ -61,32 +138,27 @@ class Facebook:
         stops the WebDriver once processing is complete or if no listings are found.
         """
         # Fetch the listings to remove
-        listings = self.driver.send_http_request('GET', 'listings/remove')
+        accounts = self.driver.send_http_request('GET', 'listings/remove')
 
-        if listings:
-            for listing in listings:
+        if accounts:
+            for account in accounts:
                 try:
                     # Check if the current account needs to be updated
-                    if self.driver.currentAccount != listing['account']:
+                    if self.driver.currentAccount != account:
                         if self.driver:
                             self.driver.stop_driver()
                         
                         # Initialize a new driver instance for the current account
-                        self.driver.currentAccount = listing['account']
+                        self.driver.currentAccount = account
                         self.driver.start_driver()
                         self.login()
                     
-                    # Check if the driver is blocked and perform necessary actions
-                    if self.is_blocked():
-                        self.driver.webDriver.delete_all_cookies()
-                        self.login()
-                    
-                    # Create the listing
-                    self.create_listing(listing)
+                    # drop the listings
+                    self.drop_listings()
                     time.sleep(random.uniform(3.0, 5.0))
                 except Exception as e:
                     # Log errors related to listing processing
-                    self.driver.record_log('error', f"Failed to process listing {listing.get('id', 'unknown')}: {e}")
+                    self.driver.record_log('error', f"Failed to drop listings from {account.get('id', 'unknown')}: {e}")
             
             # Stop the driver after processing all listings
             if self.driver:
@@ -94,7 +166,41 @@ class Facebook:
         else:
             # Log info if no new listings are found
             self.driver.record_log('info', "No new listings to remove.")
+    
+    def drop_listings(self):
+        self.driver.webDriver.get("https://www.facebook.com/"+self.driver.currentAccount['facebook_user_id']+"/allactivity?category_key=MARKETPLACELISTINGS")
+        
+        # Find the element using the defined XPath
+        try:
+            time.sleep(2)
+            init_xpath = "//div[@aria-label='Activity Log Item']/div/div/div/div/div/div[2]/div[2]"
+            element = self.driver.webDriver.find_element(By.XPATH, init_xpath)
 
+            # Loop until the element is no longer found
+            while element:
+                time.sleep(2)
+                try:
+                    xpath = "//div[@aria-label='Action options']"
+                    button = element.find_element(By.XPATH, xpath)
+                    if button:
+                        button.click()
+
+                        delete_xpath = "//div[span[text()='Delete']]"
+                        delete = self.driver.webDriver.find_element(By.XPATH, delete_xpath)
+                        delete.click()
+
+                        delete_confirm_xpath = "//span[span[text()='Delete']]"
+                        delete_confirm = self.driver.webDriver.find_element(By.XPATH, delete_confirm_xpath)
+                        delete_confirm.click()
+                    element = self.driver.webDriver.find_element(By.XPATH, init_xpath)
+                except NoSuchElementException:
+                    # Break the loop if the element is not found
+                    element = None
+            
+            self.listings_droped()
+        except:
+            self.listings_droped()
+    
     def is_blocked(self) -> bool:
         """
         Checks if the current user is blocked by looking for a specific element on the page.
@@ -151,6 +257,11 @@ class Facebook:
                 
                 
             self.driver.webDriver.get("https://mbasic.facebook.com/")
+
+            if self.driver.click("//button[@name='accept_only_essential' and @value='1']"):
+                self.driver.webDriver.get("https://mbasic.facebook.com/")
+            self.driver.webDriver.get("https://mbasic.facebook.com/")
+
             # Enter the username
             if not self.driver.type("email", self.driver.currentAccount['username'], by=By.NAME):
                 self.driver.record_log('error', "Failed to type username.")
@@ -166,8 +277,11 @@ class Facebook:
                 self.driver.record_log('error', "Failed to click login button.")
                 raise Exception("Login button click failed")
             
-            if not self.driver.click("//input[@value='OK']"):
-                self.driver.record_log('error', "Failed to click 'OK' button.")
+            try:
+                if not self.driver.click("//input[@value='OK']"):
+                    self.driver.record_log('error', "Failed to click 'OK' button.")
+            except:
+                pass
             # Wait for the login attempt to complete
             time.sleep(5)
             
@@ -576,7 +690,7 @@ class Facebook:
         try:
             self.driver.record_log('info', "Adding location.")
             
-            location = self.driver.send_http_request('GET', 'locations/get')
+            location = self.driver.send_http_request('GET', 'locations/'+self.driver.currentPostingId+'/get')
             location_str = f"{location['name']}, {location['wilaya']['name']}, Algeria"
 
             xpath = "//label[contains(., 'Location')]//input"
@@ -735,5 +849,31 @@ class Facebook:
             return True
         except Exception as e:
             self.driver.record_log('error', f"Error marking listing {listing['id']} as unpublished: {e}")
+            return False
+
+    def listings_droped(self):
+        """
+        Marks the listing as unpublished in the backend.
+
+        This method sends a POST request to the backend API to update the status of the listing to 'unpublished'.
+        It logs the success or failure of the request and returns a boolean indicating the result.
+
+        Args:
+            listing (dict): A dictionary containing the listing details, including the listing ID.
+            exception (str): An explanation of why the listing could not be published.
+
+        Returns:
+            bool: True if the request was successful and the listing was marked as unpublished, False otherwise.
+        """
+        data = {
+            "state": "droped",
+        }
+        
+        try:
+            self.driver.send_http_request('POST', f"listings/{self.driver.currentAccount['id']}/droped", data)
+            self.driver.record_log('info', f"Listings from {self.driver.currentAccount['id']} marked as droped.")
+            return True
+        except Exception as e:
+            self.driver.record_log('error', f"Error marking listings from {self.driver.currentAccount['id']} as droped: {e}")
             return False
 
