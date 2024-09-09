@@ -8,8 +8,8 @@ from selenium.common.exceptions import NoSuchElementException
 class Facebook:
     def __init__(self, driver) -> None:
         self.driver = driver
-        #self.handle_listings_to_remove()
-        #self.handle_listings_to_create()
+        self.handle_listings_to_remove()
+        self.handle_listings_to_create()
         self.update_results()
     
     def update_results(self):
